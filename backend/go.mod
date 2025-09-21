@@ -1,6 +1,8 @@
 module github.com/praxis/praxis-explorer
 
-go 1.24.6
+go 1.23.4
+
+toolchain go1.24.6
 
 require (
 	github.com/ethereum/go-ethereum v1.16.3
