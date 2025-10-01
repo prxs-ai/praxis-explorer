@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.0](https://github.com/prxs-ai/praxis-explorer/compare/v0.1.0...v0.1.0) (2025-10-01)
+
+
+### Features
+
+* **indexer:** add background job to crawl registry events ([#3](https://github.com/prxs-ai/praxis-explorer/issues/3)) ([a72557d](https://github.com/prxs-ai/praxis-explorer/commit/a72557d9d15c3049bea7d0e854ca0eda3a77f2ed))
+
 ## [0.1.0](https://github.com/prxs-ai/praxis-explorer/compare/v0.1.0...v0.1.0) (2025-09-22)
 
 ### Major New Features
