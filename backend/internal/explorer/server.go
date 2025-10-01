@@ -1,30 +1,49 @@
 package explorer
 
 import (
-    "context"
-    "os"
-    "time"
+	"context"
+	"os"
+	"time"
 
-    "github.com/gin-contrib/cors"
-    "github.com/gin-gonic/gin"
-    api "github.com/praxis/praxis-explorer/internal/explorer/api"
-    "github.com/praxis/praxis-explorer/internal/explorer/indexer"
-    "github.com/praxis/praxis-explorer/internal/explorer/store"
+	"github.com/gin-contrib/cors"
+	"github.com/gin-gonic/gin"
+	api "github.com/praxis/praxis-explorer/internal/explorer/api"
+	"github.com/praxis/praxis-explorer/internal/explorer/indexer"
+	"github.com/praxis/praxis-explorer/internal/explorer/store"
+	log "github.com/sirupsen/logrus"
 )
 
 type Server struct {
-    store   *store.Postgres
-    indexer *indexer.Indexer
-    http    *gin.Engine
+	store   *store.Postgres
+	indexer *indexer.Indexer
+	http    *gin.Engine
 }
 
 func NewServerFromEnv() (*Server, error) {
-    psql, err := store.NewPostgres(os.Getenv("DATABASE_URL"))
-    if err != nil { return nil, err }
-    ix, err := indexer.New(psql, os.Getenv("ERC8004_CONFIG")) // path to configs/erc8004.yaml
-    if err != nil { return nil, err }
+    dbURL := os.Getenv("DATABASE_URL")
+    cfgPath := os.Getenv("ERC8004_CONFIG")
+    if cfgPath == "" {
+        cfgPath = "configs/erc8004.yaml"
+    }
+
+    log.WithFields(log.Fields{
+        "DATABASE_URL":   dbURL,
+        "ERC8004_CONFIG": cfgPath,
+    }).Info("initializing server with env vars")
+
+    psql, err := store.NewPostgres(dbURL)
+    if err != nil {
+        log.WithError(err).Error("failed to connect to Postgres")
+        return nil, err
+    }
+
+    ix, err := indexer.New(psql, cfgPath)
+    if err != nil {
+        log.WithError(err).Error("failed to create indexer")
+        return nil, err
+    }
+
     r := gin.Default()
-    // CORS: allow browser UI at localhost:3000 (and any origin for simplicity in dev)
     r.Use(cors.New(cors.Config{
         AllowOrigins:     []string{"*"},
         AllowMethods:     []string{"GET", "POST", "OPTIONS"},
@@ -33,10 +52,14 @@ func NewServerFromEnv() (*Server, error) {
         AllowCredentials: false,
         MaxAge:           12 * time.Hour,
     }))
+
     s := &Server{store: psql, indexer: ix, http: r}
     api.RegisterRoutes(r, s.store)
+
+    log.Info("server initialized successfully")
     return s, nil
 }
 
-func (s *Server) RunIndexer() { go s.indexer.Start(context.Background()) }
+
+func (s *Server) RunIndexer()               { go s.indexer.Start(context.Background()) }
 func (s *Server) RunHTTP(addr string) error { return s.http.Run(addr) }
