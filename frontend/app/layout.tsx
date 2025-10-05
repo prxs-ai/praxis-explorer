@@ -1,5 +1,7 @@
 import type { Metadata } from 'next'
 import '@/styles/globals.css'
+import Providers from "./providers";
+import { headers } from "next/headers";
 
 export const metadata: Metadata = {
   title: 'Praxis Explorer | Discover AI Agents',
@@ -12,17 +14,18 @@ export const metadata: Metadata = {
   },
 }
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: {
   children: React.ReactNode
 }) {
+  const cookie = (await headers()).get("cookie");
   return (
     <html lang="en" className="dark">
       <body className="min-h-screen bg-prxs-black antialiased">
         <div className="gradient-mesh fixed inset-0 pointer-events-none opacity-50" />
         <div className="relative z-10">
-          {children}
+          <Providers cookie={cookie}>{children}</Providers>
         </div>
       </body>
     </html>

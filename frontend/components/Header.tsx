@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { useState, useEffect } from 'react'
+import { ConnectButton } from '@rainbow-me/rainbowkit';
 
 export default function Header() {
   const [scrolled, setScrolled] = useState(false)
@@ -61,6 +62,7 @@ export default function Header() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
               </svg>
             </Link>
+            <ConnectButton accountStatus="address" />
           </div>
         </div>
       </nav>
