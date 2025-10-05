@@ -5,6 +5,7 @@ import Link from 'next/link'
 import Header from '@/components/Header'
 import SearchBar from '@/components/SearchBar'
 import AgentCard from '@/components/AgentCard'
+import AddAgent from '@/components/AddAgent'
 import { searchAgents } from '@/lib/api'
 import { AgentRow, SearchParams } from '@/types/agent'
 
@@ -15,6 +16,7 @@ export default function HomePage() {
   const [searchParams, setSearchParams] = useState<SearchParams>({})
   const [nextCursor, setNextCursor] = useState<string | undefined>()
   const [loadingMore, setLoadingMore] = useState(false)
+  const [showAddForm, setShowAddForm] = useState(false)
 
   const fetchAgents = useCallback(async (params: SearchParams, append = false) => {
     try {
@@ -102,9 +104,31 @@ export default function HomePage() {
                 </div>
                 <div>
                   <h3 className="text-xl font-semibold text-white mb-2">No agents found</h3>
-                  <p className="text-prxs-gray-light">Try adjusting your search filters</p>
+                  <p className="text-prxs-gray-light mb-4">Try adjusting your search filters or register a new agent</p>
+                  
+                  <button
+                    onClick={() => setShowAddForm(!showAddForm)}
+                    className="inline-flex items-center gap-2 px-4 py-2 bg-prxs-orange/90 hover:bg-prxs-orange text-black font-medium rounded-lg transition-all"
+                  >
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                    </svg>
+                    {showAddForm ? 'Cancel' : 'Register Agent'}
+                  </button>
                 </div>
               </div>
+              
+              {showAddForm && (
+                <div className="mt-8 animate-fade-in">
+                  <AddAgent 
+                    registry='0xeFbcfaB3547EF997A747FeA1fCfBBb2fd3912445' 
+                    onSuccess={() => {
+                      setShowAddForm(false);
+                      fetchAgents({});
+                    }}
+                  />
+                </div>
+              )}
             </div>
           ) : (
             <>
@@ -143,6 +167,33 @@ export default function HomePage() {
                   </button>
                 </div>
               )}
+
+              {/* Add Agent Section */}
+              <div className="text-center mt-12">
+                <button
+                  onClick={() => setShowAddForm(!showAddForm)}
+                  className="inline-flex items-center gap-2 px-6 py-3 bg-prxs-orange/10 hover:bg-prxs-orange/20 border border-prxs-orange/30 hover:border-prxs-orange/50 text-prxs-orange font-medium rounded-lg transition-all"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                  </svg>
+                  {showAddForm ? 'Cancel Registration' : 'Register New Agent'}
+                </button>
+                
+                {showAddForm && (
+                  <div className="mt-8 animate-fade-in">
+                    <div className="max-w-md mx-auto bg-prxs-black-secondary border border-prxs-charcoal rounded-2xl p-6">
+                      <AddAgent 
+                        registry='0xeFbcfaB3547EF997A747FeA1fCfBBb2fd3912445' 
+                        onSuccess={() => {
+                          setShowAddForm(false);
+                          fetchAgents({});
+                        }}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
             </>
           )}
 
