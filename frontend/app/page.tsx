@@ -18,6 +18,10 @@ export default function HomePage() {
   const [loadingMore, setLoadingMore] = useState(false)
   const [showAddForm, setShowAddForm] = useState(false)
 
+  const registryAddress: `0x${string}` = 
+    process.env.REGISTRY_ADDRESS as `0x${string}` 
+    || '0xeFbcfaB3547EF997A747FeA1fCfBBb2fd3912445'
+
   const fetchAgents = useCallback(async (params: SearchParams, append = false) => {
     try {
       if (!append) {
@@ -121,7 +125,7 @@ export default function HomePage() {
               {showAddForm && (
                 <div className="mt-8 animate-fade-in">
                   <AddAgent 
-                    registry='0xeFbcfaB3547EF997A747FeA1fCfBBb2fd3912445' 
+                    registry={registryAddress}
                     onSuccess={() => {
                       setShowAddForm(false);
                       fetchAgents({});
@@ -184,7 +188,7 @@ export default function HomePage() {
                   <div className="mt-8 animate-fade-in">
                     <div className="max-w-md mx-auto bg-prxs-black-secondary border border-prxs-charcoal rounded-2xl p-6">
                       <AddAgent 
-                        registry='0xeFbcfaB3547EF997A747FeA1fCfBBb2fd3912445' 
+                        registry={registryAddress}
                         onSuccess={() => {
                           setShowAddForm(false);
                           fetchAgents({});
