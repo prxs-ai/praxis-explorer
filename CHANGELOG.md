@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.1.1](https://github.com/prxs-ai/praxis-explorer/compare/v0.1.0...v0.1.1) (2025-10-06)
+
+
+### Features
+
+* **backend:** add agent functionality ([9c83698](https://github.com/prxs-ai/praxis-explorer/commit/9c83698596d3c433dc86732d6b629a0c34201d8f))
+* connect wallet & add agents ([#5](https://github.com/prxs-ai/praxis-explorer/issues/5)) ([9c83698](https://github.com/prxs-ai/praxis-explorer/commit/9c83698596d3c433dc86732d6b629a0c34201d8f))
+* **frontend:** add "Connect wallet" button ([9c83698](https://github.com/prxs-ai/praxis-explorer/commit/9c83698596d3c433dc86732d6b629a0c34201d8f))
+* **indexer:** add background job to crawl registry events ([#3](https://github.com/prxs-ai/praxis-explorer/issues/3)) ([a72557d](https://github.com/prxs-ai/praxis-explorer/commit/a72557d9d15c3049bea7d0e854ca0eda3a77f2ed))
+
+
+### Bug Fixes
+
+* **add-agent:** agent info parsing ([#6](https://github.com/prxs-ai/praxis-explorer/issues/6)) ([280b925](https://github.com/prxs-ai/praxis-explorer/commit/280b9257c898981eb6cef1fdd2aca75e8975d803))
+* **frontend:** use registry address from env ([9c83698](https://github.com/prxs-ai/praxis-explorer/commit/9c83698596d3c433dc86732d6b629a0c34201d8f))
+
 ## [0.1.0](https://github.com/prxs-ai/praxis-explorer/compare/v0.1.0...v0.1.0) (2025-09-22)
 
 ### Major New Features
