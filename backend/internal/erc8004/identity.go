@@ -2,12 +2,16 @@ package erc8004
 
 import (
 	"context"
+	"fmt"
 	"math/big"
+	"reflect"
 	"strings"
 
+	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
+	log "github.com/sirupsen/logrus"
 )
 
 type AgentInfo struct {
@@ -60,7 +64,6 @@ func (i *Identity) NewAgent(auth *bind.TransactOpts, domain string, addr common.
 	if err != nil {
 		return nil, err
 	}
-	// agentId is emitted in receipt; for brevity return nil here; use receipt decode in production
 	return nil, nil
 }
 
@@ -69,40 +72,214 @@ func (i *Identity) UpdateAgent(auth *bind.TransactOpts, id *big.Int, domain stri
 	return err == nil, err
 }
 
+/*** ---------- Robust tuple readers (raw eth_call + abi.Unpack) ---------- ***/
+
+// normalizeAgentTuple handles map, slice, and struct tuple shapes.
+func normalizeAgentTuple(v interface{}) (agentInfoTuple, error) {
+	var res agentInfoTuple
+
+	// Map decoding path
+	if m, ok := v.(map[string]interface{}); ok {
+		// agentId
+		if id, ok := m["agentId"]; ok {
+			switch x := id.(type) {
+			case *big.Int:
+				res.AgentId = x
+			case big.Int:
+				res.AgentId = new(big.Int).Set(&x)
+			default:
+				return res, fmt.Errorf("unexpected agentId type: %T", id)
+			}
+		} else if id, ok := m["0"]; ok {
+			switch x := id.(type) {
+			case *big.Int:
+				res.AgentId = x
+			case big.Int:
+				res.AgentId = new(big.Int).Set(&x)
+			default:
+				return res, fmt.Errorf("unexpected agentId(0) type: %T", id)
+			}
+		}
+		// agentDomain
+		if d, ok := m["agentDomain"]; ok {
+			s, ok := d.(string)
+			if !ok {
+				return res, fmt.Errorf("unexpected agentDomain type: %T", d)
+			}
+			res.AgentDomain = s
+		} else if d, ok := m["1"]; ok {
+			s, ok := d.(string)
+			if !ok {
+				return res, fmt.Errorf("unexpected agentDomain(1) type: %T", d)
+			}
+			res.AgentDomain = s
+		}
+		// agentAddress
+		if a, ok := m["agentAddress"]; ok {
+			ad, ok := a.(common.Address)
+			if !ok {
+				return res, fmt.Errorf("unexpected agentAddress type: %T", a)
+			}
+			res.AgentAddress = ad
+		} else if a, ok := m["2"]; ok {
+			ad, ok := a.(common.Address)
+			if !ok {
+				return res, fmt.Errorf("unexpected agentAddress(2) type: %T", a)
+			}
+			res.AgentAddress = ad
+		}
+
+		if res.AgentId == nil || res.AgentDomain == "" {
+			return res, fmt.Errorf("incomplete tuple (map) decoded: %+v", m)
+		}
+		return res, nil
+	}
+
+	// Slice positional decoding path
+	if arr, ok := v.([]interface{}); ok {
+		if len(arr) < 3 {
+			return res, fmt.Errorf("tuple len < 3: %d", len(arr))
+		}
+		switch x := arr[0].(type) {
+		case *big.Int:
+			res.AgentId = x
+		case big.Int:
+			res.AgentId = new(big.Int).Set(&x)
+		default:
+			return res, fmt.Errorf("unexpected idx0 type: %T", arr[0])
+		}
+		s, ok := arr[1].(string)
+		if !ok {
+			return res, fmt.Errorf("unexpected idx1 type: %T", arr[1])
+		}
+		res.AgentDomain = s
+		ad, ok := arr[2].(common.Address)
+		if !ok {
+			return res, fmt.Errorf("unexpected idx2 type: %T", arr[2])
+		}
+		res.AgentAddress = ad
+		return res, nil
+	}
+
+	// Struct decoding path (what your runtime is returning)
+	rv := reflect.ValueOf(v)
+	if rv.IsValid() && rv.Kind() == reflect.Struct {
+		// AgentId
+		if f := rv.FieldByName("AgentId"); f.IsValid() && f.CanInterface() {
+			switch x := f.Interface().(type) {
+			case *big.Int:
+				res.AgentId = x
+			case big.Int:
+				res.AgentId = new(big.Int).Set(&x)
+			default:
+				return res, fmt.Errorf("unexpected AgentId field type: %T", f.Interface())
+			}
+		}
+		// AgentDomain
+		if f := rv.FieldByName("AgentDomain"); f.IsValid() && f.CanInterface() {
+			if s, ok := f.Interface().(string); ok {
+				res.AgentDomain = s
+			} else {
+				return res, fmt.Errorf("unexpected AgentDomain field type: %T", f.Interface())
+			}
+		}
+		// AgentAddress
+		if f := rv.FieldByName("AgentAddress"); f.IsValid() && f.CanInterface() {
+			if ad, ok := f.Interface().(common.Address); ok {
+				res.AgentAddress = ad
+			} else {
+				return res, fmt.Errorf("unexpected AgentAddress field type: %T", f.Interface())
+			}
+		}
+
+		if res.AgentId == nil || res.AgentDomain == "" {
+			return res, fmt.Errorf("incomplete tuple (struct) decoded: %+v", v)
+		}
+		return res, nil
+	}
+
+	return res, fmt.Errorf("unsupported tuple type: %T", v)
+}
+
+func (i *Identity) callAgentTuple(ctx context.Context, method string, args ...interface{}) (agentInfoTuple, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
+	// 1) Pack call data
+	data, err := i.abi.Pack(method, args...)
+	if err != nil {
+		log.WithError(err).WithField("method", method).Error("abi pack failed")
+		return agentInfoTuple{}, err
+	}
+
+	// 2) eth_call
+	to := i.addr
+	out, err := i.backend.CallContract(ctx, ethereum.CallMsg{To: &to, Data: data}, nil)
+	if err != nil {
+		log.WithError(err).WithField("method", method).Error("eth_call failed")
+		return agentInfoTuple{}, err
+	}
+
+	// 3) Unpack outputs to []interface{} (version-agnostic)
+	vals, err := i.abi.Unpack(method, out)
+	if err != nil {
+		log.WithError(err).WithField("method", method).Error("abi unpack (slice) failed")
+		return agentInfoTuple{}, err
+	}
+	if len(vals) != 1 {
+		err := fmt.Errorf("expected one output, got %d", len(vals))
+		log.WithError(err).WithField("method", method).Error("output arity mismatch")
+		return agentInfoTuple{}, err
+	}
+
+	// 4) Normalize any tuple shape to our struct
+	res, err := normalizeAgentTuple(vals[0])
+	if err != nil {
+		log.WithError(err).WithField("method", method).Error("tuple normalize failed")
+		return agentInfoTuple{}, err
+	}
+
+	log.WithFields(log.Fields{
+		"method":      method,
+		"agentId":     res.AgentId,
+		"agentDomain": res.AgentDomain,
+		"agentAddr":   res.AgentAddress.Hex(),
+	}).Debug("tuple decoded")
+	return res, nil
+}
+
 func (i *Identity) ResolveByDomain(ctx context.Context, call *bind.CallOpts, domain string) (AgentInfo, error) {
 	if call == nil {
 		call = &bind.CallOpts{}
 	}
-	var res agentInfoTuple
-	out := []interface{}{&res}
-	if err := i.contract.Call(call, &out, "resolveByDomain", domain); err != nil {
+	res, err := i.callAgentTuple(call.Context, "resolveByDomain", domain)
+	if err != nil {
 		return AgentInfo{}, err
 	}
-	return AgentInfo{AgentId: res.AgentId, AgentDomain: res.AgentDomain, AgentAddress: res.AgentAddress}, nil
+	return AgentInfo(res), nil
 }
 
 func (i *Identity) ResolveByAddress(ctx context.Context, call *bind.CallOpts, addr common.Address) (AgentInfo, error) {
 	if call == nil {
 		call = &bind.CallOpts{}
 	}
-	var res agentInfoTuple
-	out := []interface{}{&res}
-	if err := i.contract.Call(call, &out, "resolveByAddress", addr); err != nil {
+	res, err := i.callAgentTuple(call.Context, "resolveByAddress", addr)
+	if err != nil {
 		return AgentInfo{}, err
 	}
-	return AgentInfo{AgentId: res.AgentId, AgentDomain: res.AgentDomain, AgentAddress: res.AgentAddress}, nil
+	return AgentInfo(res), nil
 }
 
 func (i *Identity) GetAgent(ctx context.Context, call *bind.CallOpts, id *big.Int) (AgentInfo, error) {
 	if call == nil {
 		call = &bind.CallOpts{}
 	}
-	var res agentInfoTuple
-	out := []interface{}{&res}
-	if err := i.contract.Call(call, &out, "getAgent", id); err != nil {
+	res, err := i.callAgentTuple(call.Context, "getAgent", id)
+	if err != nil {
 		return AgentInfo{}, err
 	}
-	return AgentInfo{AgentId: res.AgentId, AgentDomain: res.AgentDomain, AgentAddress: res.AgentAddress}, nil
+	return AgentInfo(res), nil
 }
 
 func (i *Identity) GetAgentCount(ctx context.Context, call *bind.CallOpts) (*big.Int, error) {
@@ -112,7 +289,9 @@ func (i *Identity) GetAgentCount(ctx context.Context, call *bind.CallOpts) (*big
 	var cnt *big.Int
 	out := []interface{}{&cnt}
 	if err := i.contract.Call(call, &out, "getAgentCount"); err != nil {
+		log.WithError(err).Error("getAgentCount call failed")
 		return nil, err
 	}
+	log.WithField("count", cnt).Info("getAgentCount ok")
 	return cnt, nil
 }

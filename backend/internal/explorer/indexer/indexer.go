@@ -3,6 +3,7 @@ package indexer
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math/big"
 	"net/http"
@@ -180,10 +181,12 @@ func (ix *Indexer) backfillAgents(ctx context.Context, chain string, client *eth
 	}
 	count, err := ident.GetAgentCount(ctx, &bind.CallOpts{Context: ctx})
 	if err != nil || count == nil {
+		log.WithError(err).Error("failed to get agent count")
 		return
 	}
 	total := count.Int64()
 	if total <= 0 {
+		log.WithError(err).Error("total count is loe to zero")
 		return
 	}
 
@@ -195,21 +198,38 @@ func (ix *Indexer) backfillAgents(ctx context.Context, chain string, client *eth
 	for i := int64(1); i <= total; i++ {
 		ai, err := ident.GetAgent(ctx, &bind.CallOpts{Context: ctx}, big.NewInt(i))
 		if err != nil || ai.AgentId == nil {
+			log.WithError(err).Error("failed to get agent")
 			continue
 		}
 		domain := strings.TrimSpace(ai.AgentDomain)
 		if domain == "" {
+			log.Error("domain is empty string")
 			continue
 		}
+		log.WithFields(log.Fields{
+			"agent_id": ai.AgentId,
+			"chain":    chain,
+			"count":    total,
+		}).Info("storing card")
 		ix.fetchAndStoreCard(ctx, chain, idAddr.Hex(), ai.AgentId.Int64(), domain)
 	}
 }
 
 func (ix *Indexer) watchIdentity(ctx context.Context, chain string, client *ethclient.Client, idAddr common.Address) {
 	q := ethereum.FilterQuery{Addresses: []common.Address{idAddr}}
-	logs := make(chan types.Log)
-	sub, err := client.SubscribeFilterLogs(ctx, q, logs)
+	logsCh := make(chan types.Log)
+	sub, err := client.SubscribeFilterLogs(ctx, q, logsCh)
 	if err != nil {
+		// Infura HTTPS and some providers will return this
+		if strings.Contains(strings.ToLower(err.Error()), "notifications not supported") {
+			log.WithFields(log.Fields{
+				"chain": chain,
+				"addr":  idAddr.Hex(),
+			}).Warn("provider does not support subscriptions; falling back to polling")
+			ix.pollIdentity(ctx, chain, client, idAddr) // blocking loop
+			return
+		}
+		log.WithError(err).Error("failed to connect to the Ethereum Chain")
 		return
 	}
 	for {
@@ -217,12 +237,70 @@ func (ix *Indexer) watchIdentity(ctx context.Context, chain string, client *ethc
 		case <-ctx.Done():
 			return
 		case err := <-sub.Err():
-			_ = err
-			time.Sleep(3 * time.Second)
-			go ix.watchIdentity(ctx, chain, client, idAddr)
+			if err != nil && !errors.Is(err, context.Canceled) {
+				log.WithError(err).Warn("subscription error; restarting watcher")
+				time.Sleep(3 * time.Second)
+				go ix.watchIdentity(ctx, chain, client, idAddr)
+			}
 			return
-		case lg := <-logs:
+		case lg := <-logsCh:
 			ix.handleIdentityLog(ctx, chain, lg)
+		}
+	}
+}
+
+func (ix *Indexer) pollIdentity(ctx context.Context, chain string, client *ethclient.Client, idAddr common.Address) {
+	// Start from the latest block to avoid reprocessing large history
+	start, err := client.BlockNumber(ctx)
+	if err != nil {
+		log.WithError(err).WithField("chain", chain).Error("cannot get latest block for polling")
+		return
+	}
+	from := start // start at latest; adjust if you want history
+	ticker := time.NewTicker(15 * time.Second)
+	defer ticker.Stop()
+
+	log.WithFields(log.Fields{
+		"chain": chain,
+		"from":  from,
+		"addr":  idAddr.Hex(),
+	}).Info("polling identity logs (fallback)")
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			latest, err := client.BlockNumber(ctx)
+			if err != nil {
+				log.WithError(err).WithField("chain", chain).Warn("poll: failed to fetch latest block")
+				continue
+			}
+			if latest < from {
+				log.Info("reorg or provider quirk; reset to latest")
+				from = latest
+			}
+			if latest == from {
+				log.Info("nothing new")
+				continue
+			}
+
+			q := ethereum.FilterQuery{
+				Addresses: []common.Address{idAddr},
+				FromBlock: new(big.Int).SetUint64(from),
+				ToBlock:   new(big.Int).SetUint64(latest),
+			}
+			logs, err := client.FilterLogs(ctx, q)
+			if err != nil {
+				log.WithError(err).WithFields(log.Fields{
+					"chain": chain, "from": from, "to": latest,
+				}).Warn("poll: FilterLogs error")
+				continue
+			}
+			for _, lg := range logs {
+				ix.handleIdentityLog(ctx, chain, lg)
+			}
+			from = latest + 1
 		}
 	}
 }
@@ -230,6 +308,7 @@ func (ix *Indexer) watchIdentity(ctx context.Context, chain string, client *ethc
 func (ix *Indexer) handleIdentityLog(ctx context.Context, chain string, lg types.Log) {
 	// Try AgentRegistered / AgentUpdated
 	if len(lg.Topics) == 0 {
+		log.Error("Topics are zero")
 		return
 	}
 
@@ -244,6 +323,7 @@ func (ix *Indexer) handleIdentityLog(ctx context.Context, chain string, lg types
 	switch lg.Topics[0] {
 	case evReg.ID:
 		if len(lg.Topics) < 2 {
+			log.Error("Number of topics is less thant two")
 			return
 		}
 		id := new(big.Int).SetBytes(lg.Topics[1].Bytes())
@@ -258,13 +338,20 @@ func (ix *Indexer) handleIdentityLog(ctx context.Context, chain string, lg types
 			AgentAddress common.Address
 		}
 		if err := ix.idABI.UnpackIntoInterface(&data, "AgentRegistered", lg.Data); err != nil {
+			log.WithError(err).Error("failed unpacking agent data from registered event")
 			return
 		}
 		reg := ix.idents[chain].Hex()
+		log.WithFields(log.Fields{
+			"agent_id":   id.String(),
+			"chain":      chain,
+			"event_type": "registered",
+		}).Info("storing card")
 		ix.fetchAndStoreCard(ctx, chain, reg, id.Int64(), data.AgentDomain)
 
 	case evUpd.ID:
 		if len(lg.Topics) < 2 {
+			log.Error("Number of topics is less thant two")
 			return
 		}
 		id := new(big.Int).SetBytes(lg.Topics[1].Bytes())
@@ -279,9 +366,15 @@ func (ix *Indexer) handleIdentityLog(ctx context.Context, chain string, lg types
 			AgentAddress common.Address
 		}
 		if err := ix.idABI.UnpackIntoInterface(&data, "AgentUpdated", lg.Data); err != nil {
+			log.WithError(err).Error("failed unpacking agent data from updating event")
 			return
 		}
 		reg := ix.idents[chain].Hex()
+		log.WithFields(log.Fields{
+			"agent_id":   id.String(),
+			"chain":      chain,
+			"event_type": "updated",
+		}).Info("storing card")
 		ix.fetchAndStoreCard(ctx, chain, reg, id.Int64(), data.AgentDomain)
 	}
 }
@@ -289,6 +382,7 @@ func (ix *Indexer) handleIdentityLog(ctx context.Context, chain string, lg types
 func (ix *Indexer) fetchAndStoreCard(ctx context.Context, chain string, registryAddr string, agentID int64, domain string) {
 	d := strings.TrimSpace(domain)
 	if d == "" {
+		log.Error("Domain is zero")
 		return
 	}
 	// heuristic: build .well-known URL if needed
@@ -318,7 +412,11 @@ func (ix *Indexer) fetchAndStoreCard(ctx context.Context, chain string, registry
 		return
 	}
 
-	_ = ix.store.UpsertAgentFromCard(ctx, chain, registryAddr, agentID, d, card)
+	err = ix.store.UpsertAgentFromCard(ctx, chain, registryAddr, agentID, d, card)
+	if err != nil {
+		log.WithError(err).WithField("agentID", agentID).Error("failed upserting agent from card")
+		return
+	}
 	log.WithFields(log.Fields{
 		"chain":   chain,
 		"agentID": agentID,
