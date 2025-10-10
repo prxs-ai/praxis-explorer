@@ -6,7 +6,7 @@ import Link from 'next/link'
 import Header from '@/components/Header'
 import { getAgent } from '@/lib/api'
 import { AgentRow } from '@/types/agent'
-import { formatDate, isOnline, getChainName, truncateAddress, extractSkillName, extractSkillTags } from '@/lib/utils'
+import { formatDate, isOnline, getChainName, truncateAddress, extractSkillName, extractSkillTags, isIPFSUrl } from '@/lib/utils'
 
 export default function AgentDetailPage() {
   const rawParams = useParams() as any
@@ -27,6 +27,7 @@ export default function AgentDetailPage() {
         )
         setAgent(data)
       } catch (err) {
+        console.error('Failed to fetch agent:', err)
         setError(err instanceof Error ? err.message : 'Failed to fetch agent')
       } finally {
         setLoading(false)
@@ -76,9 +77,17 @@ export default function AgentDetailPage() {
   }
 
   const online = isOnline(agent.lastSeenAt)
-  const agentName = agent.card?.name || agent.domain.split('.')[0]
+  const agentName = agent.card?.name || agent.domain?.split('.')[0] || 'Unknown Agent'
   const description = agent.card?.description || 'No description available'
   const verified = agent.agentId > 0
+
+  // Safely handle arrays and objects
+  const safeSkills = Array.isArray(agent.skills) ? agent.skills : []
+  const safeTrustModels = Array.isArray(agent.trustModels) ? agent.trustModels : []
+  const safeCapabilities = agent.capabilities || {}
+
+  // Check if this agent uses IPFS
+  const usesIPFS = isIPFSUrl(agent.domain || '')
 
   return (
     <div className="min-h-screen">
@@ -115,8 +124,18 @@ export default function AgentDetailPage() {
                           <span className="text-xs text-prxs-cyan">Verified</span>
                         </div>
                       )}
+                      {usesIPFS && (
+                        <div className="flex items-center gap-1 px-3 py-1 bg-purple-500/10 border border-purple-500/20 rounded-full">
+                          <svg className="w-4 h-4 text-purple-400" fill="currentColor" viewBox="0 0 20 20">
+                            <path d="M10 2L3 7l7 5 7-5-7-5zM3 13l7 5 7-5M3 10l7 5 7-5" />
+                          </svg>
+                          <span className="text-xs text-purple-400">IPFS</span>
+                        </div>
+                      )}
                     </div>
-                    <p className="text-xl text-prxs-gray-light mb-4">{agent.domain}</p>
+                    <p className="text-xl text-prxs-gray-light mb-4">
+                      {usesIPFS ? 'Decentralized storage' : (agent.domain || 'Unknown domain')}
+                    </p>
                     <p className="text-prxs-gray-light max-w-3xl">{description}</p>
                   </div>
                   
@@ -146,13 +165,13 @@ export default function AgentDetailPage() {
                   <div className="bg-prxs-black/50 border border-prxs-charcoal rounded-xl p-4">
                     <p className="text-sm text-prxs-gray mb-1">Address</p>
                     <p className="text-lg font-semibold text-white font-mono">
-                      {truncateAddress(agent.addressCaip10, 6)}
+                      {truncateAddress(agent.addressCaip10 || '', 6)}
                     </p>
                   </div>
                   
                   {agent.scoreAvg && (
                     <div className="bg-prxs-black/50 border border-prxs-charcoal rounded-xl p-4">
-                      <p className="text-sm text-prxs-gray mb-1">Score</p>
+                      <p className="text-sm text-prxs-gray mb-1">Rating</p>
                       <div className="flex items-center gap-2">
                         <svg className="w-5 h-5 text-yellow-500" fill="currentColor" viewBox="0 0 20 20">
                           <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
@@ -164,7 +183,7 @@ export default function AgentDetailPage() {
                 </div>
 
                 <div className="flex flex-wrap gap-2 mb-8">
-                  {agent.trustModels.map((model) => (
+                  {safeTrustModels.map((model) => (
                     <span
                       key={model}
                       className="px-4 py-2 bg-gradient-to-r from-prxs-orange/10 to-prxs-cyan/10 border border-prxs-orange/20 rounded-full text-sm font-medium text-white"
@@ -200,15 +219,15 @@ export default function AgentDetailPage() {
                     <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                       <div className="bg-prxs-black/30 border border-prxs-charcoal/50 rounded-lg p-4">
                         <p className="text-sm text-prxs-gray mb-1">Validations</p>
-                        <p className="text-2xl font-bold text-white">{agent.validationsCnt}</p>
+                        <p className="text-2xl font-bold text-white">{agent.validationsCnt || 0}</p>
                       </div>
                       <div className="bg-prxs-black/30 border border-prxs-charcoal/50 rounded-lg p-4">
                         <p className="text-sm text-prxs-gray mb-1">Feedbacks</p>
-                        <p className="text-2xl font-bold text-white">{agent.feedbacksCnt}</p>
+                        <p className="text-2xl font-bold text-white">{agent.feedbacksCnt || 0}</p>
                       </div>
                       <div className="bg-prxs-black/30 border border-prxs-charcoal/50 rounded-lg p-4">
                         <p className="text-sm text-prxs-gray mb-1">Skills</p>
-                        <p className="text-2xl font-bold text-white">{agent.skills.length}</p>
+                        <p className="text-2xl font-bold text-white">{safeSkills.length}</p>
                       </div>
                     </div>
                   </div>
@@ -234,8 +253,8 @@ export default function AgentDetailPage() {
 
               {activeTab === 'skills' && (
                 <div className="space-y-4 animate-fade-in">
-                  {agent.skills.length > 0 ? (
-                    agent.skills.map((skill, idx) => (
+                  {safeSkills.length > 0 ? (
+                    safeSkills.map((skill, idx) => (
                       <div
                         key={idx}
                         className="bg-prxs-black/30 border border-prxs-charcoal/50 rounded-xl p-6"
@@ -268,10 +287,10 @@ export default function AgentDetailPage() {
 
               {activeTab === 'capabilities' && (
                 <div className="animate-fade-in">
-                  {Object.keys(agent.capabilities).length > 0 ? (
+                  {Object.keys(safeCapabilities).length > 0 ? (
                     <div className="bg-prxs-black/30 border border-prxs-charcoal/50 rounded-xl p-6">
                       <pre className="text-sm text-prxs-gray-light overflow-x-auto">
-                        {JSON.stringify(agent.capabilities, null, 2)}
+                        {JSON.stringify(safeCapabilities, null, 2)}
                       </pre>
                     </div>
                   ) : (
@@ -284,7 +303,7 @@ export default function AgentDetailPage() {
                 <div className="animate-fade-in">
                   <div className="bg-prxs-black/30 border border-prxs-charcoal/50 rounded-xl p-6">
                     <pre className="text-sm text-prxs-gray-light overflow-x-auto">
-                      {JSON.stringify(agent.card, null, 2)}
+                      {JSON.stringify(agent.card || {}, null, 2)}
                     </pre>
                   </div>
                 </div>
