@@ -1,7 +1,7 @@
 'use client'
 
 import { AgentRow } from '@/types/agent'
-import { formatDate, isOnline, getChainName, extractSkillName, getTrustModelColor } from '@/lib/utils'
+import { formatDate, isOnline, getChainName, extractSkillName, getTrustModelColor, isIPFSUrl } from '@/lib/utils'
 import Link from 'next/link'
 
 interface AgentCardProps {
@@ -10,9 +10,16 @@ interface AgentCardProps {
 
 export default function AgentCard({ agent }: AgentCardProps) {
   const online = isOnline(agent.lastSeenAt)
-  const agentName = agent.card?.name || agent.domain.split('.')[0]
+  const agentName = agent.card?.name || agent.domain?.split('.')[0] || 'Unknown Agent'
   const description = agent.card?.description || 'No description available'
   const verified = agent.agentId > 0
+  
+  // Safely handle skills array
+  const safeSkills = Array.isArray(agent.skills) ? agent.skills : []
+  const safeTrustModels = Array.isArray(agent.trustModels) ? agent.trustModels : []
+
+  // Check if this agent uses IPFS
+  const usesIPFS = isIPFSUrl(agent.domain || '')
 
   return (
     <Link href={`/agent/${agent.chainId}/${agent.agentId}`}>
@@ -31,8 +38,18 @@ export default function AgentCard({ agent }: AgentCardProps) {
                     <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.857-9.809a.75.75 0 00-1.214-.882l-3.483 4.79-1.88-1.88a.75.75 0 10-1.06 1.061l2.5 2.5a.75.75 0 001.137-.089l4-5.5z" clipRule="evenodd" />
                   </svg>
                 )}
+                {usesIPFS && (
+                  <div className="flex items-center gap-1 px-2 py-1 bg-purple-500/10 border border-purple-500/20 rounded-full">
+                    <svg className="w-3 h-3 text-purple-400" fill="currentColor" viewBox="0 0 20 20">
+                      <path d="M10 2L3 7l7 5 7-5-7-5zM3 13l7 5 7-5M3 10l7 5 7-5" />
+                    </svg>
+                    <span className="text-xs text-purple-400">IPFS</span>
+                  </div>
+                )}
               </div>
-              <p className="text-prxs-gray text-sm">{agent.domain}</p>
+              <p className="text-prxs-gray text-sm">
+                {usesIPFS ? 'Decentralized storage' : (agent.domain || 'Unknown domain')}
+              </p>
             </div>
             
             <div className="flex items-center gap-2">
@@ -48,7 +65,7 @@ export default function AgentCard({ agent }: AgentCardProps) {
           </p>
 
           <div className="flex flex-wrap gap-2 mb-4">
-            {agent.trustModels.map((model) => (
+            {safeTrustModels.map((model) => (
               <span
                 key={model}
                 className={`badge badge-${getTrustModelColor(model)}`}
@@ -58,11 +75,11 @@ export default function AgentCard({ agent }: AgentCardProps) {
             ))}
           </div>
 
-          {agent.skills.length > 0 && (
+          {safeSkills.length > 0 && (
             <div className="space-y-1">
               <p className="text-xs text-prxs-gray uppercase tracking-wider mb-2">Skills</p>
               <div className="flex flex-wrap gap-1">
-                {agent.skills.slice(0, 3).map((skill, idx) => (
+                {safeSkills.slice(0, 3).map((skill, idx) => (
                   <span
                     key={idx}
                     className="text-xs px-2 py-1 bg-prxs-charcoal/50 text-prxs-gray-light rounded-md"
@@ -70,9 +87,9 @@ export default function AgentCard({ agent }: AgentCardProps) {
                     {extractSkillName(skill)}
                   </span>
                 ))}
-                {agent.skills.length > 3 && (
+                {safeSkills.length > 3 && (
                   <span className="text-xs px-2 py-1 text-prxs-gray">
-                    +{agent.skills.length - 3} more
+                    +{safeSkills.length - 3} more
                   </span>
                 )}
               </div>
@@ -90,9 +107,9 @@ export default function AgentCard({ agent }: AgentCardProps) {
                 </div>
               )}
               <div className="flex items-center gap-1 text-xs text-prxs-gray">
-                <span>{agent.validationsCnt} validations</span>
+                <span>{agent.validationsCnt || 0} validations</span>
                 <span>•</span>
-                <span>{agent.feedbacksCnt} feedbacks</span>
+                <span>{agent.feedbacksCnt || 0} feedbacks</span>
               </div>
             </div>
             
