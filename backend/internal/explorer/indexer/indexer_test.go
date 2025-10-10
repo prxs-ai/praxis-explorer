@@ -28,7 +28,7 @@ func topicForUint256(v *big.Int) common.Hash {
 	return common.BytesToHash(b[:])
 }
 
-func TestStart_HandlesAgentRegisteredEventAndFetchesCard(t *testing.T) {
+func TestStart_HandlesRegisteredEventAndFetchesCard(t *testing.T) {
 	t.Helper()
 
 	// ---- 1) Spin up a fake agent-card host and record hits
@@ -57,7 +57,7 @@ func TestStart_HandlesAgentRegisteredEventAndFetchesCard(t *testing.T) {
 		nets:    []Chain{},
 		seeds:   []string{},
 		clients: make(map[string]*ethclient.Client),
-		idents:  map[string]common.Address{"sepolia": common.HexToAddress("0x1111111111111111111111111111111111111111")},
+		idents:  map[string]common.Address{"sepolia": common.HexToAddress("0xb6cb1a0e1f54264cf6b41278e4d392993a19767d")},
 	}
 	// Parse ABI same way the real constructor does
 	parsed, err := abi.JSON(strings.NewReader(erc.IdentityABI()))
@@ -76,22 +76,23 @@ func TestStart_HandlesAgentRegisteredEventAndFetchesCard(t *testing.T) {
 		close(done)
 	}()
 
-	// ---- 4) Craft a mock AgentRegistered log and feed it to the indexer
-	ev := ix.idABI.Events["AgentRegistered"]
+	// ---- 4) Craft a mock Registered log and feed it to the indexer
+	ev := ix.idABI.Events["Registered"]
 	agentID := big.NewInt(42)
-	agentAddr := common.HexToAddress("0x2222222222222222222222222222222222222222")
+	owner := common.HexToAddress("0x2222222222222222222222222222222222222222")
 
-	// Pack data section: non-indexed args -> (agentDomain string, agentAddress address)
-	data, err := ev.Inputs.NonIndexed().Pack(domain, agentAddr)
+	// Pack data section: non-indexed args -> (tokenURI string)
+	data, err := ev.Inputs.NonIndexed().Pack(domain)
 	if err != nil {
 		t.Fatalf("pack event data: %v", err)
 	}
 
 	lg := types.Log{
-		Address: common.HexToAddress("0xeFbcfaB3547EF997A747FeA1fCfBBb2fd3912445"),
+		Address: common.HexToAddress("0xb6cb1a0e1f54264cf6b41278e4d392993a19767d"),
 		Topics: []common.Hash{
-			ev.ID,                    // event signature
-			topicForUint256(agentID), // indexed agentId
+			ev.ID,                             // event signature
+			topicForUint256(agentID),          // indexed agentId
+			common.BytesToHash(owner.Bytes()), // indexed owner
 		},
 		Data:        data,
 		BlockNumber: 123,
