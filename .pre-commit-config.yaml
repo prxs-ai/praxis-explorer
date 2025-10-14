@@ -1,0 +1,57 @@
+repos:
+  # General repo hygiene for everything (frontend + backend)
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-added-large-files
+      - id: check-merge-conflict
+
+  # Go formatting on staged .go files under backend/
+  - repo: https://github.com/dnephin/pre-commit-golang
+    rev: v0.5.1
+    hooks:
+      - id: go-fmt
+        files: ^backend/.*\.go$
+
+  # Local hooks that run from repo root but operate inside backend/
+  - repo: local
+    hooks:
+      - id: go-vet-backend
+        name: go vet (backend/)
+        language: system
+        pass_filenames: false
+        files: ^backend/
+        entry: |
+          bash -euo pipefail -c '
+            cd backend
+            pkgs=$(go list ./... 2>/dev/null || true)
+            [ -z "$pkgs" ] && exit 0
+            go vet $pkgs
+          '
+
+      - id: go-build-backend
+        name: go build (backend/)
+        language: system
+        pass_filenames: false
+        files: ^backend/
+        entry: |
+          bash -euo pipefail -c '
+            cd backend
+            go build ./...
+          '
+
+      - id: go-unit-tests-backend
+        name: go test (backend/, exclude /examples)
+        language: system
+        pass_filenames: false
+        files: ^backend/
+        entry: |
+          bash -euo pipefail -c '
+            cd backend
+            pkgs=$(go list ./... | grep -Ev "/examples($|/)" || true)
+            [ -z "$pkgs" ] && exit 0
+            go test -v $pkgs
+          '

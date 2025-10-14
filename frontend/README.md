@@ -24,7 +24,7 @@ A modern, beautiful dark-themed UI for the Praxis Explorer service, built with N
 
 ### Prerequisites
 
-- Node.js 18+ 
+- Node.js 18+
 - npm or yarn
 - Praxis Explorer service running on `http://localhost:8080`
 

@@ -83,7 +83,7 @@ export default function AgentDetailPage() {
   return (
     <div className="min-h-screen">
       <Header />
-      
+
       <main className="pt-32 pb-20">
         <div className="section-container">
           <Link
@@ -99,7 +99,7 @@ export default function AgentDetailPage() {
           <div className="bg-gradient-to-br from-prxs-black-secondary to-prxs-black border border-prxs-charcoal rounded-3xl overflow-hidden">
             <div className="relative p-8 pb-0">
               <div className="absolute inset-0 bg-gradient-to-br from-prxs-orange/10 via-transparent to-prxs-cyan/10 opacity-50" />
-              
+
               <div className="relative z-10">
                 <div className="flex items-start justify-between mb-6">
                   <div>
@@ -119,7 +119,7 @@ export default function AgentDetailPage() {
                     <p className="text-xl text-prxs-gray-light mb-4">{agent.domain}</p>
                     <p className="text-prxs-gray-light max-w-3xl">{description}</p>
                   </div>
-                  
+
                   <div className="flex items-center gap-3">
                     <div className={`flex items-center gap-2 px-4 py-2 rounded-full ${
                       online ? 'bg-green-500/10 border border-green-500/20' : 'bg-prxs-charcoal/50 border border-prxs-charcoal'
@@ -137,19 +137,19 @@ export default function AgentDetailPage() {
                     <p className="text-sm text-prxs-gray mb-1">Network</p>
                     <p className="text-lg font-semibold text-white">{getChainName(agent.chainId)}</p>
                   </div>
-                  
+
                   <div className="bg-prxs-black/50 border border-prxs-charcoal rounded-xl p-4">
                     <p className="text-sm text-prxs-gray mb-1">Agent ID</p>
                     <p className="text-lg font-semibold text-white">#{agent.agentId}</p>
                   </div>
-                  
+
                   <div className="bg-prxs-black/50 border border-prxs-charcoal rounded-xl p-4">
                     <p className="text-sm text-prxs-gray mb-1">Address</p>
                     <p className="text-lg font-semibold text-white font-mono">
                       {truncateAddress(agent.addressCaip10, 6)}
                     </p>
                   </div>
-                  
+
                   {agent.scoreAvg && (
                     <div className="bg-prxs-black/50 border border-prxs-charcoal rounded-xl p-4">
                       <p className="text-sm text-prxs-gray mb-1">Score</p>
