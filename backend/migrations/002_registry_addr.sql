@@ -10,4 +10,3 @@ CREATE INDEX IF NOT EXISTS idx_agents_registry_addr ON agents (registry_addr);
 CREATE UNIQUE INDEX IF NOT EXISTS uniq_agents_registry_agent
 ON agents (registry_addr, agent_id)
 WHERE agent_id <> 0;
-

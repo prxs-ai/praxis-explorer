@@ -18,8 +18,8 @@ export default function HomePage() {
   const [loadingMore, setLoadingMore] = useState(false)
   const [showAddForm, setShowAddForm] = useState(false)
 
-  const registryAddress: `0x${string}` = 
-    process.env.REGISTRY_ADDRESS as `0x${string}` 
+  const registryAddress: `0x${string}` =
+    process.env.REGISTRY_ADDRESS as `0x${string}`
     || '0xeFbcfaB3547EF997A747FeA1fCfBBb2fd3912445'
 
   const fetchAgents = useCallback(async (params: SearchParams, append = false) => {
@@ -32,13 +32,13 @@ export default function HomePage() {
       }
 
       const response = await searchAgents({ ...params, limit: 12 })
-      
+
       if (append) {
         setAgents(prev => [...prev, ...response.items])
       } else {
         setAgents(response.items)
       }
-      
+
       setNextCursor(response.nextCursor)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch agents')
@@ -66,7 +66,7 @@ export default function HomePage() {
   return (
     <div className="min-h-screen">
       <Header />
-      
+
       <main className="pt-32 pb-20">
         <div className="section-container">
           <div className="text-center mb-12 animate-fade-in">
@@ -109,7 +109,7 @@ export default function HomePage() {
                 <div>
                   <h3 className="text-xl font-semibold text-white mb-2">No agents found</h3>
                   <p className="text-prxs-gray-light mb-4">Try adjusting your search filters or register a new agent</p>
-                  
+
                   <button
                     onClick={() => setShowAddForm(!showAddForm)}
                     className="inline-flex items-center gap-2 px-4 py-2 bg-prxs-orange/90 hover:bg-prxs-orange text-black font-medium rounded-lg transition-all"
@@ -121,10 +121,10 @@ export default function HomePage() {
                   </button>
                 </div>
               </div>
-              
+
               {showAddForm && (
                 <div className="mt-8 animate-fade-in">
-                  <AddAgent 
+                  <AddAgent
                     registry={registryAddress}
                     onSuccess={() => {
                       setShowAddForm(false);
@@ -183,11 +183,11 @@ export default function HomePage() {
                   </svg>
                   {showAddForm ? 'Cancel Registration' : 'Register New Agent'}
                 </button>
-                
+
                 {showAddForm && (
                   <div className="mt-8 animate-fade-in">
                     <div className="max-w-md mx-auto bg-prxs-black-secondary border border-prxs-charcoal rounded-2xl p-6">
-                      <AddAgent 
+                      <AddAgent
                         registry={registryAddress}
                         onSuccess={() => {
                           setShowAddForm(false);

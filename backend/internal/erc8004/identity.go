@@ -29,6 +29,7 @@ type agentInfoTuple struct {
 
 // ABI for IdentityRegistry with events (from reference implementation)
 const identityABI = `[
+  {"anonymous":false,"inputs":[{"indexed":true,"internalType":"uint256","name":"agentId","type":"uint256"},{"indexed":false,"internalType":"string","name":"tokenURI","type":"string"},{"indexed":true,"internalType":"address","name":"owner","type":"address"}],"name":"Registered","type":"event"},
   {"anonymous":false,"inputs":[{"indexed":true,"internalType":"uint256","name":"agentId","type":"uint256"},{"indexed":false,"internalType":"string","name":"agentDomain","type":"string"},{"indexed":false,"internalType":"address","name":"agentAddress","type":"address"}],"name":"AgentRegistered","type":"event"},
   {"anonymous":false,"inputs":[{"indexed":true,"internalType":"uint256","name":"agentId","type":"uint256"},{"indexed":false,"internalType":"string","name":"agentDomain","type":"string"},{"indexed":false,"internalType":"address","name":"agentAddress","type":"address"}],"name":"AgentUpdated","type":"event"},
   {"inputs":[{"internalType":"string","name":"agentDomain","type":"string"},{"internalType":"address","name":"agentAddress","type":"address"}],"name":"newAgent","outputs":[{"internalType":"uint256","name":"agentId","type":"uint256"}],"stateMutability":"nonpayable","type":"function"},

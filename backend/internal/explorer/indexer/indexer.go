@@ -5,12 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"math/big"
-	"net/http"
-	"os"
-	"strings"
-	"time"
-
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
@@ -20,6 +14,12 @@ import (
 	erc "github.com/praxis/praxis-explorer/internal/erc8004"
 	"github.com/praxis/praxis-explorer/internal/explorer/store"
 	log "github.com/sirupsen/logrus"
+	"math/big"
+	"net/http"
+	"net/url"
+	"os"
+	"strings"
+	"time"
 )
 
 func init() {
@@ -317,6 +317,12 @@ func (ix *Indexer) handleIdentityLog(ctx context.Context, chain string, lg types
 		"block": lg.BlockNumber,
 	}).Debug("log received")
 
+	// v1 event
+	if evV1, ok := ix.idABI.Events["Registered"]; ok && lg.Topics[0] == evV1.ID {
+		ix.handleRegistrationV1(ctx, chain, lg, evV1)
+		return
+	}
+
 	evReg := ix.idABI.Events["AgentRegistered"]
 	evUpd := ix.idABI.Events["AgentUpdated"]
 
@@ -377,6 +383,124 @@ func (ix *Indexer) handleIdentityLog(ctx context.Context, chain string, lg types
 		}).Info("storing card")
 		ix.fetchAndStoreCard(ctx, chain, reg, id.Int64(), data.AgentDomain)
 	}
+}
+
+func (ix *Indexer) handleRegistrationV1(ctx context.Context, chain string, lg types.Log, ev abi.Event) {
+	// Topics: [signature, agentId (indexed), owner (indexed)]
+	if len(lg.Topics) < 3 {
+		log.Error("Registered v1: not enough topics")
+		return
+	}
+	agentID := new(big.Int).SetBytes(lg.Topics[1].Bytes())
+	owner := common.BytesToAddress(lg.Topics[2].Bytes()[12:]) // right-padded 32 bytes
+
+	// Data: NonIndexed = tokenURI (string)
+	nonargs := ev.Inputs.NonIndexed()
+	vals, err := abi.Arguments(nonargs).Unpack(lg.Data)
+	if err != nil {
+		log.WithError(err).Error("v1 Registered: unpack tokenURI failed")
+		return
+	}
+	if len(vals) != 1 {
+		log.WithField("got", len(vals)).Error("v1 Registered: unexpected outputs arity")
+		return
+	}
+	tokenURI, _ := vals[0].(string)
+
+	log.WithFields(log.Fields{
+		"chain":    chain,
+		"agent_id": agentID.String(),
+		"owner":    owner.Hex(),
+		"tokenURI": tokenURI,
+	}).Info("Registered v1 event")
+
+	// 1) Fetch registration JSON
+	reg, err := ix.fetchJSON(ctx, tokenURI)
+	if err != nil {
+		log.WithError(err).WithField("tokenURI", tokenURI).Warn("registration fetch error")
+		return
+	}
+
+	// 2) Parse endpoints (A2A, MCP, DID)
+	a2aURL, mcpURL, did := extractEndpoints(reg)
+	if a2aURL == "" {
+		log.WithFields(log.Fields{
+			"agent_id": agentID.String(),
+			"chain":    chain,
+			"mcp":      mcpURL,
+			"did":      did,
+		}).Warn("v1 registration has no A2A endpoint; skipping card fetch")
+		return
+	}
+
+	// 3) Fetch agent card via existing path
+	registry := ix.idents[chain].Hex()
+	ix.fetchAndStoreCard(ctx, chain, registry, agentID.Int64(), a2aURL)
+}
+
+// Helper: fetch arbitrary JSON (supports http(s) and ipfs://)
+func (ix *Indexer) fetchJSON(ctx context.Context, uri string) (map[string]any, error) {
+	u := strings.TrimSpace(uri)
+	if u == "" {
+		return nil, fmt.Errorf("empty uri")
+	}
+
+	// Support ipfs://CID[/path]
+	if strings.HasPrefix(u, "ipfs://") {
+		// naive gateway transform; can be made configurable
+		u = "https://ipfs.io/ipfs/" + strings.TrimPrefix(u, "ipfs://")
+	}
+
+	// Validate URL
+	if _, err := url.Parse(u); err != nil {
+		return nil, fmt.Errorf("invalid uri: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := http.DefaultClient.Do(req) // #nosec G107
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	var out map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// Helper: extract A2A, MCP, DID from a v1 registration JSON
+func extractEndpoints(reg map[string]any) (a2a, mcp, did string) {
+	eps, ok := reg["endpoints"]
+	if !ok {
+		return "", "", ""
+	}
+	arr, ok := eps.([]interface{})
+	if !ok {
+		return "", "", ""
+	}
+	for _, raw := range arr {
+		m, ok := raw.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		name, _ := m["name"].(string)
+		endpoint, _ := m["endpoint"].(string)
+
+		switch strings.ToUpper(strings.TrimSpace(name)) {
+		case "A2A":
+			a2a = endpoint
+		case "MCP":
+			mcp = endpoint
+		case "DID":
+			did = endpoint
+		}
+	}
+	return
 }
 
 func (ix *Indexer) fetchAndStoreCard(ctx context.Context, chain string, registryAddr string, agentID int64, domain string) {

@@ -18,7 +18,7 @@ export default function AgentCard({ agent }: AgentCardProps) {
     <Link href={`/agent/${agent.chainId}/${agent.agentId}`}>
       <div className="group relative bg-gradient-to-br from-prxs-black-secondary to-prxs-black border border-prxs-charcoal rounded-2xl p-6 card-hover cursor-pointer overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-br from-prxs-orange/5 via-transparent to-prxs-cyan/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-        
+
         <div className="relative z-10">
           <div className="flex items-start justify-between mb-4">
             <div className="flex-1">
@@ -34,7 +34,7 @@ export default function AgentCard({ agent }: AgentCardProps) {
               </div>
               <p className="text-prxs-gray text-sm">{agent.domain}</p>
             </div>
-            
+
             <div className="flex items-center gap-2">
               <div className={`w-2 h-2 rounded-full ${online ? 'bg-green-500 animate-pulse' : 'bg-prxs-gray'}`} />
               <span className="text-xs text-prxs-gray-light">
@@ -95,7 +95,7 @@ export default function AgentCard({ agent }: AgentCardProps) {
                 <span>{agent.feedbacksCnt} feedbacks</span>
               </div>
             </div>
-            
+
             <div className="text-xs text-prxs-gray">
               {getChainName(agent.chainId)} #{agent.agentId}
             </div>

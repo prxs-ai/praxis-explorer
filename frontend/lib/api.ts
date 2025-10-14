@@ -4,7 +4,7 @@ const API_BASE_URL = (process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC
 
 export async function searchAgents(params: SearchParams): Promise<AgentsResponse> {
   const searchParams = new URLSearchParams()
-  
+
   if (params.q) searchParams.set('q', params.q)
   if (params.network) searchParams.set('network', params.network)
   if (params.capability) searchParams.set('capability', params.capability)

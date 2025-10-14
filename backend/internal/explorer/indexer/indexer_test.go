@@ -28,6 +28,13 @@ func topicForUint256(v *big.Int) common.Hash {
 	return common.BytesToHash(b[:])
 }
 
+// helper: address -> indexed topic (left-pad address to 32 bytes)
+func topicForAddress(a common.Address) common.Hash {
+	var b [32]byte
+	copy(b[12:], a.Bytes())
+	return common.BytesToHash(b[:])
+}
+
 func TestStart_HandlesAgentRegisteredEventAndFetchesCard(t *testing.T) {
 	t.Helper()
 
@@ -116,6 +123,108 @@ func TestStart_HandlesAgentRegisteredEventAndFetchesCard(t *testing.T) {
 	})
 
 	// Clean up the goroutine
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("indexer did not stop in time")
+	}
+}
+
+func TestStart_HandlesV1RegisteredEvent_ParsesRegistrationAndFetchesCard(t *testing.T) {
+	t.Helper()
+
+	// 1) Fake server serving both the registration JSON and the agent-card.json
+	var regHits, cardHits int32
+	reg := map[string]any{
+		"type": "https://eips.ethereum.org/EIPS/eip-8004#registration-v1",
+		"endpoints": []any{
+			map[string]any{"name": "A2A", "endpoint": "", "version": "0.3.0"},
+			map[string]any{"name": "MCP", "endpoint": "https://mcp.example/", "version": "2025-06-18"},
+			map[string]any{"name": "DID", "endpoint": "did:method:foobar", "version": "v1"},
+		},
+	}
+	card := map[string]any{"name": "unit-test-agent-v1"}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case strings.HasSuffix(r.URL.Path, "/reg.json"):
+			atomic.AddInt32(&regHits, 1)
+			_ = json.NewEncoder(w).Encode(reg)
+			return
+		case strings.HasSuffix(r.URL.Path, "/.well-known/agent-card.json"):
+			atomic.AddInt32(&cardHits, 1)
+			_ = json.NewEncoder(w).Encode(card)
+			return
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	// Now that we know the server URL, set the A2A endpoint to it.
+	// Indexer will append "/.well-known/agent-card.json".
+	reg["endpoints"].([]any)[0].(map[string]any)["endpoint"] = srv.URL
+
+	// 2) Build an indexer with the ABI (which includes v1 "Registered")
+	ix := &Indexer{
+		nets:    []Chain{},
+		seeds:   []string{},
+		clients: make(map[string]*ethclient.Client),
+		idents:  map[string]common.Address{"sepolia": common.HexToAddress("0x1111111111111111111111111111111111111111")},
+	}
+	parsed, err := abi.JSON(strings.NewReader(erc.IdentityABI()))
+	if err != nil {
+		t.Fatalf("parse identity ABI: %v", err)
+	}
+	ix.idABI = parsed
+
+	// 3) Start the background loop (idle)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	done := make(chan struct{})
+	go func() {
+		ix.Start(ctx)
+		close(done)
+	}()
+
+	// 4) Create a v1 Registered log
+	ev := ix.idABI.Events["Registered"]
+	agentID := big.NewInt(77)
+	owner := common.HexToAddress("0x3333333333333333333333333333333333333333")
+
+	// Data: NonIndexed (tokenURI)
+	tokenURI := srv.URL + "/reg.json"
+	data, err := ev.Inputs.NonIndexed().Pack(tokenURI)
+	if err != nil {
+		t.Fatalf("pack v1 event data: %v", err)
+	}
+
+	lg := types.Log{
+		Address: common.HexToAddress("0xeFbcfaB3547EF997A747FeA1fCfBBb2fd3912445"),
+		Topics: []common.Hash{
+			ev.ID,
+			topicForUint256(agentID), // indexed agentId
+			topicForAddress(owner),   // indexed owner
+		},
+		Data:        data,
+		BlockNumber: 456,
+		TxHash:      common.HexToHash(randomHash("txhash-v1")),
+		Index:       0,
+	}
+
+	// 5) Trigger the handler; it should fetch the registration, discover A2A, then fetch the card
+	func() {
+		defer func() { _ = recover() }() // ignore nil store upsert panic
+		ix.handleIdentityLog(ctx, "sepolia", lg)
+	}()
+
+	// Assert both registration and card were fetched
+	waitUntil(t, 2*time.Second, func() bool { return atomic.LoadInt32(&regHits) >= 1 })
+	waitUntil(t, 2*time.Second, func() bool { return atomic.LoadInt32(&cardHits) >= 1 })
+
+	// Cleanup
 	cancel()
 	select {
 	case <-done:

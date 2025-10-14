@@ -35,7 +35,7 @@ export default function AddAgent({
 
   // 3) write + wait
   const { writeContract, data: hash, isPending: sending, error: writeError } = useWriteContract();
-  const { isLoading: confirming, isSuccess, data: receipt } = useWaitForTransactionReceipt({ 
+  const { isLoading: confirming, isSuccess, data: receipt } = useWaitForTransactionReceipt({
     hash
   });
 
