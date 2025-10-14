@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.2](https://github.com/prxs-ai/praxis-explorer/compare/v0.1.1...v0.1.2) (2025-10-14)
+
+
+### Features
+
+* **erc-8004:** add support for v1 ([#8](https://github.com/prxs-ai/praxis-explorer/issues/8)) ([e18a366](https://github.com/prxs-ai/praxis-explorer/commit/e18a3665b15bb1d0f8a22e2ee29ada7d979c17dc))
+
 ## [0.1.1](https://github.com/prxs-ai/praxis-explorer/compare/v0.1.0...v0.1.1) (2025-10-06)
 
 
